@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .kpi { margin-bottom: 20px; }
+        .kpi h2 { margin: 0; }
+    </style>
+    <script>
+        function updateDisplay(greens, reds, attendance) {
+            document.getElementById('green-flags').innerText = greens;
+            document.getElementById('red-flags').innerText = reds;
+            document.getElementById('attendance').innerText = attendance + '%';
+        }
+
+        function fetchKPIData() {
+            fetch('/api/kpi-data')
+                .then(response => response.json())
+                .then(data => updateDisplay(data.green_flags, data.red_flags, data.attendance))
+                .catch(error => console.error('Error fetching KPI data:', error));
+        }
+
+        function postKPIData(greens, reds, attendance) {
+            fetch('/api/update-kpis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ green_flags: greens, red_flags: reds, attendance: attendance })
+            })
+            .then(response => response.json())
+            .then(data => console.log('Success:', data))
+            .catch(error => console.error('Error updating KPI data:', error));
+        }
+
+        function manualUpdate() {
+            const greens = parseInt(document.getElementById('green-flags').innerText) + 1;
+            const reds = parseInt(document.getElementById('red-flags').innerText) - 1;
+            const attendance = parseInt(document.getElementById('attendance').innerText);
+            postKPIData(greens, reds, attendance);
+            updateDisplay(greens, reds, attendance);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchKPIData();
+            document.getElementById('refresh').addEventListener('click', fetchKPIData);
+            document.getElementById('update-manual').addEventListener('click', manualUpdate);
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>KPI Dashboard</h1>
+        <button id="refresh">Refresh KPI Data</button>
+        <button id="update-manual">Update Manually</button>
+    </header>
+
+    <main>
+        <div class="kpi">
+            <h2>Green Flags: <span id="green-flags">0</span></h2>
+        </div>
+        <div class="kpi">
+            <h2>Red Flags: <span id="red-flags">0</span></h2>
+        </div>
+        <div class="kpi">
+            <h2>Attendance: <span id="attendance">0%</span></h2>
+        </div>
+    </main>
+</body>
+</html>
