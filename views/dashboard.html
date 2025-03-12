@@ -5,67 +5,139 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KPI Dashboard</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        .kpi { margin-bottom: 20px; }
-        .kpi h2 { margin: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        h1 {
+            color: #3a3b3c;
+        }
+
+        .kpi {
+            margin: 0 auto 30px;
+            max-width: 400px;
+            background-color: #fff;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        input[type=number] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+            margin-bottom: 20px;
+        }
+
+        button {
+            display: block;
+            width: 100%;
+            background-color: #0056b3;
+            color: #fff;
+            padding: 15px;
+            font-size: 1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #004494;
+        }
+
+        @media (max-width: 600px) {
+            .kpi {
+                width: 90%;
+            }
+        }
     </style>
     <script>
         function updateDisplay(greens, reds, attendance) {
-            document.getElementById('green-flags').innerText = greens;
-            document.getElementById('red-flags').innerText = reds;
-            document.getElementById('attendance').innerText = attendance + '%';
+            document.getElementById('green-flags').value = greens;
+            document.getElementById('red-flags').value = reds;
+            document.getElementById('attendance').value = attendance;
         }
 
         function fetchKPIData() {
             fetch('/api/kpi-data')
-                .then(response => response.json())
-                .then(data => updateDisplay(data.green_flags, data.red_flags, data.attendance))
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('KPI data fetched from CSV:', data);
+                    updateDisplay(data.green_flags, data.red_flags, data.attendance);
+                })
                 .catch(error => console.error('Error fetching KPI data:', error));
         }
 
-        function postKPIData(greens, reds, attendance) {
+        function postKPIData() {
+            const greens = parseInt(document.getElementById('green-flags').value, 10);
+            const reds = parseInt(document.getElementById('red-flags').value, 10);
+            const attendance = parseInt(document.getElementById('attendance').value, 10);
+
             fetch('/api/update-kpis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ green_flags: greens, red_flags: reds, attendance: attendance })
             })
-            .then(response => response.json())
-            .then(data => console.log('Success:', data))
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok ' + response.statusText);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('KPI data updated and sent to Pixoo:', data);
+            })
             .catch(error => console.error('Error updating KPI data:', error));
-        }
-
-        function manualUpdate() {
-            const greens = parseInt(document.getElementById('green-flags').innerText) + 1;
-            const reds = parseInt(document.getElementById('red-flags').innerText) - 1;
-            const attendance = parseInt(document.getElementById('attendance').innerText);
-            postKPIData(greens, reds, attendance);
-            updateDisplay(greens, reds, attendance);
         }
 
         document.addEventListener('DOMContentLoaded', function() {
             fetchKPIData();
-            document.getElementById('refresh').addEventListener('click', fetchKPIData);
-            document.getElementById('update-manual').addEventListener('click', manualUpdate);
+            document.getElementById('update-values').addEventListener('click', postKPIData);
         });
     </script>
 </head>
 <body>
     <header>
         <h1>KPI Dashboard</h1>
-        <button id="refresh">Refresh KPI Data</button>
-        <button id="update-manual">Update Manually</button>
     </header>
 
     <main>
         <div class="kpi">
-            <h2>Green Flags: <span id="green-flags">0</span></h2>
+            <h2>Green Flags</h2>
+            <input type="number" id="green-flags" />
         </div>
         <div class="kpi">
-            <h2>Red Flags: <span id="red-flags">0</span></h2>
+            <h2>Red Flags</h2>
+            <input type="number" id="red-flags" />
         </div>
         <div class="kpi">
-            <h2>Attendance: <span id="attendance">0%</span></h2>
+            <h2>Attendance</h2>
+            <input type="number" id="attendance" />
         </div>
+        <button id="update-values">Update Values and Display on Pixoo</button>
     </main>
 </body>
 </html>
