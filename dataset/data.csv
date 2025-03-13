@@ -1,2 +1,2 @@
-green_flags,red_flags,attendance
-4,3,4
+green_flags,red_flags,attendance,showDateTime,country
+4,3,1,True,Colombia
