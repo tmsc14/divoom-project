@@ -3,6 +3,7 @@ from pixoo import Pixoo
 from _helpers import try_to_request, parse_bool_value
 import os
 from PIL import Image
+import csv
 
 # Configuration and Initialization
 pixoo_host = os.getenv('PIXOO_HOST', '192.168.1.100')  # Your Pixoo's IP
