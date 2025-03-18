@@ -128,6 +128,12 @@ def load_frames_from_directory(folder_path, prefix, num_frames):
             print(f"Frame not found: {frame_path}")
     return frames
 
+def format_kpi_value(value):
+    value = int(value)  # Ensure it's an integer
+    if value >= 1000:
+        return f"{value / 1000:.1f}k" if value < 10000 else f"{value // 1000}k"
+    return str(value)
+
 def animate_loop(frames_collection, static_background):
     """Animate the frames while maintaining the static background."""
     while not stop_animation:
@@ -185,9 +191,9 @@ def update_static_elements(kpi_data):
         draw.point((x, 44), fill=(line_r, line_g, line_b))  # Moved up from 47
 
     # Adjusted KPI text (moved up by 3 pixels)
-    draw.text((14, 4), f"{kpi_data['green_flags']}", fill=(text_r, text_g, text_b), font=font)  # Moved up from (14, 6)
-    draw.text((14, 19), f"{kpi_data['red_flags']}", fill=(text_r, text_g, text_b), font=font)  # Moved up from (14, 22)
-    draw.text((14, 34), f"{kpi_data['attendance']}%", fill=(text_r, text_g, text_b), font=font)  # Moved up from (14, 37)
+    draw.text((14, 4), format_kpi_value(kpi_data['green_flags']), fill=(text_r, text_g, text_b), font=font)
+    draw.text((14, 19), format_kpi_value(kpi_data['red_flags']), fill=(text_r, text_g, text_b), font=font)
+    draw.text((14, 34), format_kpi_value(kpi_data['attendance']), fill=(text_r, text_g, text_b), font=font)
 
     # Display Date/Time if enabled (also shifted up)
     if kpi_data.get("showDateTime"):
