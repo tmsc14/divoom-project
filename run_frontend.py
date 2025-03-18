@@ -195,6 +195,7 @@ def update_static_elements(kpi_data):
     draw.text((14, 19), format_kpi_value(kpi_data['red_flags']), fill=(text_r, text_g, text_b), font=font)
     draw.text((14, 34), format_kpi_value(kpi_data['attendance']), fill=(text_r, text_g, text_b), font=font)
 
+
     # Display Date/Time if enabled (also shifted up)
     if kpi_data.get("showDateTime"):
         tz = timezone(country_timezones.get(kpi_data["country"], "Australia/Sydney"))
