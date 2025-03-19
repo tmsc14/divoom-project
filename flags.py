@@ -9,6 +9,8 @@ import threading
 import time
 from PIL import Image, ImageDraw, ImageFont
 from pytz import timezone, country_timezones
+from urllib3.exceptions import ConnectTimeoutError
+from requests.exceptions import ConnectionError
 
 # Configuration and Initialization
 pixoo_host = os.getenv("PIXOO_HOST", "192.168.1.100")  # Your Pixoo's IP address
@@ -228,7 +230,7 @@ def update_static_elements(kpi_data):
         font = ImageFont.truetype("views/fonts/PressStart2P.ttf", 7.5) 
     except IOError:
         try:
-            font = ImageFont.truetype("views/fonts/TinyUnicode.ttf", 6)
+            font = ImageFont.truetype("views/fonts/TinyUnicode.ttf", 7.5)
         except IOError:
             font = ImageFont.load_default()
 
@@ -262,17 +264,24 @@ def update_static_elements(kpi_data):
         draw.text((2, 46), country_code, fill=(text_r, text_g, text_b), font=font) 
         draw.text((23, 46), now_time, fill=(text_r, text_g, text_b), font=font) 
         draw.text((0, 55), now_date, fill=(text_r, text_g, text_b), font=font)
+        
+            # Draw "CS#1" on the right side
+        right_x = 52  # X-axis position for right-aligned text
+        draw.text((right_x, 3), "C", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 13), "S", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 24), "#", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 34), "1", fill=(text_r, text_g, text_b), font=font)
 
     return static_img
 
 def update_pixoo_display(kpi_data):
     global animation_thread
 
-    if not try_to_request(f"http://{pixoo_host}/get"):
-        print("Pixoo device is not reachable!")
-        return
-
     try:
+        if not try_to_request(f"http://{pixoo_host}/get"):
+            print("Pixoo device is not reachable!")
+            return
+
         # Display static elements first and get the static background
         static_background = update_static_elements(kpi_data)
 
@@ -280,12 +289,6 @@ def update_pixoo_display(kpi_data):
         green_frames = load_frames_from_directory("views/img/green-flag-frames", "GF", 5)
         red_frames = load_frames_from_directory("views/img/red-flag-frames", "RF", 5)
         attendance_frames = load_frames_from_directory("views/img/attendance-frames", "AF", 2)
-
-        # Extract necessary parameters for animate_loop
-        show_date_time = kpi_data.get("showDateTime", False)
-        country = kpi_data.get("country", "Australia")
-        text_color = kpi_data.get("text_color", "255,255,255")
-        background_color = kpi_data.get("background_color", "0,0,0")
 
         # Start animation in a thread
         with animation_lock:
@@ -299,15 +302,18 @@ def update_pixoo_display(kpi_data):
                 args=(
                     [green_frames, red_frames, attendance_frames],  # frames_collection
                     static_background,  # static_background
-                    show_date_time,  # show_date_time
-                    country,  # country
-                    text_color,  # text_color
-                    background_color,  # background_color
+                    kpi_data["showDateTime"],  # show_date_time
+                    kpi_data["country"],  # country
+                    kpi_data["text_color"],  # text_color
+                    kpi_data["background_color"],  # background_color
                 ),
                 daemon=True,
             )
+
             animation_thread.start()
 
+    except (ConnectTimeoutError, ConnectionError) as e:
+        print(f"Failed to connect to Pixoo device: {e}")
     except Exception as e:
         print(f"Error updating Pixoo display: {e}")
 
