@@ -1,448 +1,322 @@
+import csv
+from flask import Flask, jsonify, request, send_from_directory
+from pixoo import Pixoo
+from datetime import datetime
+from pytz import timezone
+from _helpers import try_to_request, parse_bool_value
 import os
-import sys
+import threading
 import time
-import requests
-import json
-import base64
-
-from dotenv import load_dotenv
-from flask import Flask, request, redirect, url_for
-from flasgger import Swagger, swag_from
-from pixoo import Channel, Pixoo
-from PIL import Image
-
-from swag import definitions
-from swag import passthrough
-
-import _helpers
-
-load_dotenv()
-
-pixoo_host = os.environ.get('PIXOO_HOST', 'Pixoo64')
-pixoo_screen = int(os.environ.get('PIXOO_SCREEN_SIZE', 64))
-pixoo_debug = _helpers.parse_bool_value(os.environ.get('PIXOO_DEBUG', 'false'))
-pixoo_test_connection_retries = int(os.environ.get('PIXOO_TEST_CONNECTION_RETRIES', sys.maxsize))
-
-for connection_test_count in range(pixoo_test_connection_retries + 1):
-    if _helpers.try_to_request(f'http://{pixoo_host}/get'):
-        break
-    else:
-        if connection_test_count == pixoo_test_connection_retries:
-            sys.exit(f'Failed to connect to [{pixoo_host}]. Exiting.')
-        else:
-            time.sleep(30)
-
-pixoo = Pixoo(
-    pixoo_host,
-    pixoo_screen,
-    pixoo_debug
-)
-
-app = Flask(__name__)
-app.config['SWAGGER'] = _helpers.get_swagger_config()
-
-swagger = Swagger(app, template=_helpers.get_additional_swagger_template())
-definitions.create(swagger)
-
-
-def _push_immediately(_request):
-    if _helpers.parse_bool_value(_request.form.get('push_immediately', default=True)):
-        pixoo.push()
-
-
-@app.route('/', methods=['GET'])
-def home():
-    return redirect(url_for('flasgger.apidocs'))
-
-
-@app.route('/health', methods=['GET'])
-def health():
-    return 'OK'
-
-
-@app.route('/brightness/<int:percentage>', methods=['PUT'])
-@swag_from('swag/set/brightness.yml')
-def brightness(percentage):
-    pixoo.set_brightness(percentage)
-
-    return 'OK'
-
-
-@app.route('/channel/<int:number>', methods=['PUT'])
-@app.route('/face/<int:number>', methods=['PUT'])
-@app.route('/visualizer/<int:number>', methods=['PUT'])
-@app.route('/clock/<int:number>', methods=['PUT'])
-@swag_from('swag/set/generic_number.yml')
-def generic_set_number(number):
-    if request.path.startswith('/channel/'):
-        pixoo.set_channel(Channel(number))
-    elif request.path.startswith('/face/'):
-        pixoo.set_face(number)
-    elif request.path.startswith('/visualizer/'):
-        pixoo.set_visualizer(number)
-    elif request.path.startswith('/clock/'):
-        pixoo.set_clock(number)
-
-    return 'OK'
-
-
-@app.route('/screen/on/<boolean>', methods=['PUT'])
-@swag_from('swag/set/generic_boolean.yml')
-def generic_set_boolean(boolean):
-    if request.path.startswith('/screen/on/'):
-        pixoo.set_screen(_helpers.parse_bool_value(boolean))
-
-    return 'OK'
-
-
-@app.route('/image', methods=['POST'])
-@swag_from('swag/draw/image.yml')
-def image():
-    pixoo.draw_image_at_location(
-        Image.open(request.files['image'].stream),
-        int(request.form.get('x')),
-        int(request.form.get('y'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/text', methods=['POST'])
-@swag_from('swag/draw/text.yml')
-def text():
-    pixoo.draw_text_at_location_rgb(
-        request.form.get('text'),
-        int(request.form.get('x')),
-        int(request.form.get('y')),
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/fill', methods=['POST'])
-@swag_from('swag/draw/fill.yml')
-def fill():
-    pixoo.fill_rgb(
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/line', methods=['POST'])
-@swag_from('swag/draw/line.yml')
-def line():
-    pixoo.draw_line_from_start_to_stop_rgb(
-        int(request.form.get('start_x')),
-        int(request.form.get('start_y')),
-        int(request.form.get('stop_x')),
-        int(request.form.get('stop_y')),
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/rectangle', methods=['POST'])
-@swag_from('swag/draw/rectangle.yml')
-def rectangle():
-    pixoo.draw_filled_rectangle_from_top_left_to_bottom_right_rgb(
-        int(request.form.get('top_left_x')),
-        int(request.form.get('top_left_y')),
-        int(request.form.get('bottom_right_x')),
-        int(request.form.get('bottom_right_y')),
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/pixel', methods=['POST'])
-@swag_from('swag/draw/pixel.yml')
-def pixel():
-    pixoo.draw_pixel_at_location_rgb(
-        int(request.form.get('x')),
-        int(request.form.get('y')),
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/character', methods=['POST'])
-@swag_from('swag/draw/character.yml')
-def character():
-    pixoo.draw_character_at_location_rgb(
-        request.form.get('character'),
-        int(request.form.get('x')),
-        int(request.form.get('y')),
-        int(request.form.get('r')),
-        int(request.form.get('g')),
-        int(request.form.get('b'))
-    )
-
-    _push_immediately(request)
-
-    return 'OK'
-
-
-@app.route('/sendText', methods=['POST'])
-@swag_from('swag/send/text.yml')
-def send_text():
-    pixoo.send_text(
-        request.form.get('text'),
-        (int(request.form.get('x')), int(request.form.get('y'))),
-        (int(request.form.get('r')), int(request.form.get('g')), int(request.form.get('b'))),
-        int(request.form.get('identifier')),
-        int(request.form.get('font')),
-        int(request.form.get('text_width')),
-        int(request.form.get('scroll_speed')),
-        int(request.form.get('scroll_direction'))
-    )
-
-    return 'OK'
-
-
-def _reset_gif():
-    return requests.post(f'http://{pixoo.ip_address}/post', json.dumps({
-        "Command": "Draw/ResetHttpGifId"
-    })).json()
-
-
-def _send_gif(num, offset, width, speed, data):
-    return requests.post(f'http://{pixoo.ip_address}/post', json.dumps({
-        "Command": "Draw/SendHttpGif",
-        "PicID": 1,
-        "PicNum": num,
-        "PicOffset": offset,
-        "PicWidth": width,
-        "PicSpeed": speed,
-        "PicData": data
-    })).json()
-
-
-def _handle_gif(gif, speed, skip_first_frame):
-    if gif.is_animated:
-        _reset_gif()
-
-        gif_frames = []
-
-        for i in range((1 if skip_first_frame else 0), gif.n_frames):
-            if len(gif_frames) == 59:
-                break
-
-            gif.seek(i)
-
-            if gif.size not in ((16, 16), (32, 32), (64, 64)):
-                gif_frames.append(gif.resize((pixoo.size, pixoo.size)).convert("RGB"))
-            else:
-                gif_frames.append(gif.convert("RGB"))
-
-        for offset, gif_frame in enumerate(gif_frames):
-            _send_gif(
-                num=len(gif_frames),
-                offset=offset,
-                width=gif_frame.width,
-                speed=speed,
-                data=base64.b64encode(gif_frame.tobytes()).decode("utf-8")
-            )
-    else:
-        pixoo.draw_image(gif)
-        pixoo.push()
-
-
-@app.route('/sendGif', methods=['POST'])
-@swag_from('swag/send/gif.yml')
-def send_gif():
-    _handle_gif(
-        gif=Image.open(request.files['gif'].stream),
-        speed=int(request.form.get('speed')),
-        skip_first_frame=_helpers.parse_bool_value(request.form.get('skip_first_frame', default=False))
-    )
-
-    return 'OK'
-
-
-@app.route('/download/gif', methods=['POST'])
-@swag_from('swag/download/gif.yml')
-def download_gif():
-    try:
-        response = requests.get(
-            url=request.form.get('url'),
-            stream=True,
-            timeout=int(request.form.get('timeout')),
-            verify=_helpers.parse_bool_value(request.form.get('ssl_verify', default=True))
-        )
-
-        response.raise_for_status()
-
-        _handle_gif(
-            gif=Image.open(response.raw),
-            speed=int(request.form.get('speed')),
-            skip_first_frame=_helpers.parse_bool_value(request.form.get('skip_first_frame', default=False))
-        )
-    except (requests.exceptions.RequestException, OSError, IOError) as e:
-        return f'Error downloading the GIF: {e}', 400
-
-    return 'OK'
-
-
-@app.route('/download/image', methods=['POST'])
-@swag_from('swag/download/image.yml')
-def download_image():
-    try:
-        response = requests.get(
-            url=request.form.get('url'),
-            stream=True,
-            timeout=int(request.form.get('timeout')),
-            verify=_helpers.parse_bool_value(request.form.get('ssl_verify', default=True))
-        )
-
-        response.raise_for_status()
-
-        pixoo.draw_image_at_location(
-            Image.open(response.raw),
-            int(request.form.get('x')),
-            int(request.form.get('y'))
-        )
-
-        _push_immediately(request)
-    except (requests.exceptions.RequestException, OSError, IOError) as e:
-        return f'Error downloading the image: {e}', 400
-
-    return 'OK'
-
-
-@app.route('/download/text', methods=['POST'])
-@swag_from('swag/download/text.yml')
-def text_from_url():
-    return requests.post(f'http://{pixoo.ip_address}/post', json.dumps({
-        "Command": "Draw/SendHttpItemList",
-        "ItemList": [
-            {
-                "type": 23,
-                "TextId": int(request.form.get('id')),
-                "TextString": request.form.get('url'),
-                "x": int(request.form.get('x')),
-                "y": int(request.form.get('y')),
-                "dir": int(request.form.get('scroll_direction')),
-                "font": 4,
-                "TextWidth": int(request.form.get('text_width')),
-                "Textheight": int(request.form.get('text_height')),
-                "speed": int(request.form.get('scroll_speed')),
-                "update_time": int(request.form.get('update_interval')),
-                "align": int(request.form.get('horizontal_alignment')),
-                "color": '#{:02x}{:02x}{:02x}'.format(
-                    int(request.form.get('r')),
-                    int(request.form.get('g')),
-                    int(request.form.get('b'))
-                )
-            }
-        ]
-    })).json()
-
-
-passthrough_routes = {
-    # channel ...
-    '/passthrough/channel/setIndex': passthrough.create(*passthrough.channel_set_index),
-    '/passthrough/channel/setCustomPageIndex': passthrough.create(*passthrough.channel_set_custom_page_index),
-    '/passthrough/channel/setEqPosition': passthrough.create(*passthrough.channel_set_eq_position),
-    '/passthrough/channel/cloudIndex': passthrough.create(*passthrough.channel_cloud_index),
-    '/passthrough/channel/getIndex': passthrough.create(*passthrough.channel_get_index),
-    '/passthrough/channel/setBrightness': passthrough.create(*passthrough.channel_set_brightness),
-    '/passthrough/channel/getAllConf': passthrough.create(*passthrough.channel_get_all_conf),
-    '/passthrough/channel/onOffScreen': passthrough.create(*passthrough.channel_on_off_screen),
-    # sys ...
-    '/passthrough/sys/logAndLat': passthrough.create(*passthrough.sys_log_and_lat),
-    '/passthrough/sys/timeZone': passthrough.create(*passthrough.sys_timezone),
-    # device ...
-    '/passthrough/device/setUTC': passthrough.create(*passthrough.device_set_utc),
-    '/passthrough/device/SetScreenRotationAngle': passthrough.create(*passthrough.device_set_screen_rotation_angle),
-    '/passthrough/device/SetMirrorMode': passthrough.create(*passthrough.device_set_mirror_mode),
-    '/passthrough/device/getDeviceTime': passthrough.create(*passthrough.device_get_device_time),
-    '/passthrough/device/setDisTempMode': passthrough.create(*passthrough.device_set_dis_temp_mode),
-    '/passthrough/device/setTime24Flag': passthrough.create(*passthrough.device_set_time_24_flag),
-    '/passthrough/device/setHighLightMode': passthrough.create(*passthrough.device_set_high_light_mode),
-    '/passthrough/device/setWhiteBalance': passthrough.create(*passthrough.device_set_white_balance),
-    '/passthrough/device/getWeatherInfo': passthrough.create(*passthrough.device_get_weather_info),
-    '/passthrough/device/playBuzzer': passthrough.create(*passthrough.device_play_buzzer),
-    # tools ...
-    '/passthrough/tools/setTimer': passthrough.create(*passthrough.tools_set_timer),
-    '/passthrough/tools/setStopWatch': passthrough.create(*passthrough.tools_set_stop_watch),
-    '/passthrough/tools/setScoreBoard': passthrough.create(*passthrough.tools_set_score_board),
-    '/passthrough/tools/setNoiseStatus': passthrough.create(*passthrough.tools_set_noise_status),
-    # draw ...
-    '/passthrough/draw/sendHttpText': passthrough.create(*passthrough.draw_send_http_text),
-    '/passthrough/draw/clearHttpText': passthrough.create(*passthrough.draw_clear_http_text),
-    '/passthrough/draw/sendHttpGif': passthrough.create(*passthrough.draw_send_http_gif),
-    '/passthrough/draw/resetHttpGifId': passthrough.create(*passthrough.draw_reset_http_gif_id),
-    '/passthrough/draw/sendHttpItemList': passthrough.create(*passthrough.draw_send_http_item_list)
+from PIL import Image, ImageDraw, ImageFont
+from pytz import timezone, country_timezones
+from urllib3.exceptions import ConnectTimeoutError
+from requests.exceptions import ConnectionError
+
+# Configuration and Initialization
+pixoo_host = os.getenv("PIXOO_HOST", "192.168.1.100")  # Your Pixoo's IP address
+pixoo_screen = int(os.getenv("PIXOO_SCREEN_SIZE", 64))
+pixoo_debug = parse_bool_value(os.getenv("PIXOO_DEBUG", "false"))
+
+pixoo = Pixoo(pixoo_host, pixoo_screen, pixoo_debug)
+
+# Flask app setup
+app = Flask(__name__, static_folder="views", static_url_path="")
+
+# CSV file path
+CSV_FILE_PATH = "dataset/data.csv"
+
+country_timezones = {
+    "Australia": "Australia/Sydney",
+    "Philippines": "Asia/Manila",
+    "United States": "America/New_York",
+    "India": "Asia/Kolkata",
+    "Colombia": "America/Bogota",
 }
 
+# Global variables for animation control
+animation_thread = None
+stop_animation = False
+animation_lock = threading.Lock()  # To prevent race conditions
 
-def _passthrough_request(passthrough_request):
-    return requests.post(f'http://{pixoo.ip_address}/post', json.dumps(passthrough_request.json)).json()
-
-
-for _route, _swag in passthrough_routes.items():
-    exec(f"""
-@app.route('{_route}', methods=['POST'], endpoint='{_route}')
-@swag_from({_swag}, endpoint='{_route}')
-def passthrough_{list(passthrough_routes.keys()).index(_route)}():
-    return _passthrough_request(request)
-        """)
-
-
-@app.route('/divoom/device/lan', methods=['POST'])
-@swag_from('swag/divoom/device/return_same_lan_device.yml')
-def divoom_return_same_lan_device():
-    return _helpers.divoom_api_call('Device/ReturnSameLANDevice').json()
-
-
-@app.route('/divoom/channel/dial/types', methods=['POST'])
-@swag_from('swag/divoom/channel/get_dial_type.yml')
-def divoom_get_dial_type():
-    return _helpers.divoom_api_call('Channel/GetDialType').json()
-
-
-@app.route('/divoom/channel/dial/list', methods=['POST'])
-@swag_from('swag/divoom/channel/get_dial_list.yml')
-def divoom_get_dial_list():
-    return _helpers.divoom_api_call(
-        'Channel/GetDialList',
-        {
-            'DialType': request.form.get('dial_type', default='Game'),
-            'Page': int(request.form.get('page_number', default='1'))
+def read_kpi_data_from_csv():
+    try:
+        with open(CSV_FILE_PATH, mode="r") as file:
+            csv_reader = csv.DictReader(file)
+            for row in csv_reader:
+                return {
+                    "green_flags": int(row.get("green_flags", 0)),
+                    "red_flags": int(row.get("red_flags", 0)),
+                    "attendance": int(row.get("attendance", 0)),
+                    "showDateTime": parse_bool_value(row.get("showDateTime", "false")),
+                    "country": row.get("country", "Australia"),
+                    "background_color": row.get("background_color", "0,0,0"),
+                    "text_color": row.get("text_color", "255,255,255"),
+                    "line_color": row.get("line_color", "255,255,255"),
+                }
+    except Exception as e:
+        print(f"Error reading CSV file: {e}")
+        return {
+            "green_flags": 0,
+            "red_flags": 0,
+            "attendance": 0,
+            "showDateTime": False,
+            "country": "Australia",
+            "background_color": "0,0,0",
+            "text_color": "255,255,255",
+            "line_color": "255,255,255",
         }
-    ).json()
 
+def write_kpi_data_to_csv(kpi_data):
+    try:
+        with open(CSV_FILE_PATH, mode="w", newline="") as file:
+            csv_writer = csv.DictWriter(
+                file,
+                fieldnames=[
+                    "green_flags",
+                    "red_flags",
+                    "attendance",
+                    "showDateTime",
+                    "country",
+                    "background_color",
+                    "text_color",
+                    "line_color",
+                ],
+            )
+            csv_writer.writeheader()
+            csv_writer.writerow(kpi_data)
+    except Exception as e:
+        print(f"Error writing to CSV file: {e}")
 
-if __name__ == '__main__':
-    app.run(
-        debug=_helpers.parse_bool_value(os.environ.get('PIXOO_REST_DEBUG', 'false')),
-        host=os.environ.get('PIXOO_REST_HOST', '127.0.0.1'),
-        port=os.environ.get('PIXOO_REST_PORT', '5000')
-    )
+@app.route("/")
+def serve_dashboard():
+    return send_from_directory(app.static_folder, "dashboard.html")
+
+@app.route("/api/kpi-data", methods=["GET"])
+def get_kpi_data():
+    kpi_data = read_kpi_data_from_csv()
+    return jsonify(kpi_data)
+
+@app.route("/api/update-kpis", methods=["POST"])
+def update_kpis():
+    global animation_thread, stop_animation
+
+    # Stop the existing animation thread
+    with animation_lock:
+        if animation_thread is not None:
+            stop_animation = True
+            animation_thread.join()
+            stop_animation = False
+
+    # Update KPI data
+    kpi_data = request.json
+    write_kpi_data_to_csv(kpi_data)
+
+    # Update Pixoo display
+    update_pixoo_display(kpi_data)
+
+    return jsonify(status="success", data=kpi_data)
+
+def load_frames_from_directory(folder_path, prefix, num_frames):
+    """Load frames with a specific prefix from a directory."""
+    frames = []
+    for i in range(1, num_frames + 1):
+        frame_path = f"{folder_path}/{prefix}-frame{i}.png"
+        if os.path.exists(frame_path):
+            with Image.open(frame_path) as img:
+                if img.mode != "RGBA":
+                    img = img.convert("RGBA")
+                frames.append(img.resize((10, 10), Image.LANCZOS))
+        else:
+            print(f"Frame not found: {frame_path}")
+    return frames
+
+def format_kpi_value(value):
+    value = int(value)  # Ensure it's an integer
+    if value >= 1000:
+        return f"{value / 1000:.1f}k" if value < 10000 else f"{value // 1000}k"
+    return str(value)
+
+def animate_loop(frames_collection, static_background, show_date_time, country, text_color, background_color):
+    try:
+        font = ImageFont.truetype("views/fonts/PressStart2P.ttf", 7.5)
+    except IOError:
+        try:
+            font = ImageFont.truetype("views/fonts/TinyUnicode.ttf", 6)
+        except IOError:
+            font = ImageFont.load_default()
+
+    frame_index = 0  # Track the current frame index
+    num_frames = len(frames_collection[0])  # Number of frames for the first animation
+
+    # Parse the background color
+    bg_r, bg_g, bg_b = map(int, background_color.split(","))
+
+    while not stop_animation:
+        # Get the current frames for each animation
+        gf = frames_collection[0][frame_index % len(frames_collection[0])]
+        rf = frames_collection[1][frame_index % len(frames_collection[1])]
+        af = frames_collection[2][frame_index % len(frames_collection[2])]
+
+        # Create a copy of the static background
+        combined = static_background.copy()
+
+        # Paste the animation frames
+        combined.paste(gf, (2, 2), gf)
+        combined.paste(rf, (2, 17), rf)
+        combined.paste(af, (2, 32), af)
+
+        # Draw the time and date if enabled
+        if show_date_time:
+            draw = ImageDraw.Draw(combined)
+            text_r, text_g, text_b = map(int, text_color.split(","))
+
+            # Get the current time and date
+            tz = timezone(country_timezones.get(country, "Australia/Sydney"))
+            now = datetime.now(tz)
+            now_date = now.strftime("%d/%m/%y")
+            now_time = now.strftime("%H:%M")
+            country_code = {
+                "Australia": "AU",
+                "Philippines": "PH",
+                "United States": "US",
+                "India": "IN",
+                "Colombia": "CO",
+            }.get(country, "AU")
+
+            # Calculate text bounding boxes
+            country_code_bbox = draw.textbbox((2, 46), country_code, font=font)
+            time_bbox = draw.textbbox((23, 46), now_time, font=font)
+            date_bbox = draw.textbbox((0, 55), now_date, font=font)
+
+            # Clear the previous time and date areas using the background color
+            draw.rectangle(country_code_bbox, fill=(bg_r, bg_g, bg_b))  # Clear country code area
+            draw.text((2, 46), country_code, fill=(text_r, text_g, text_b), font=font)
+
+            draw.rectangle(time_bbox, fill=(bg_r, bg_g, bg_b))  # Clear time area
+            draw.text((23, 46), now_time, fill=(text_r, text_g, text_b), font=font)
+
+            draw.rectangle(date_bbox, fill=(bg_r, bg_g, bg_b))  # Clear date area
+            draw.text((0, 55), now_date, fill=(text_r, text_g, text_b), font=font)
+
+        # Convert the combined image to RGB (Pixoo doesn't support RGBA)
+        combined_rgb = combined.convert("RGB")
+
+        # Send the combined image to the Pixoo device
+        try:
+            pixoo.draw_image(combined_rgb)
+            pixoo.push()
+        except Exception as e:
+            print(f"Error updating Pixoo display: {e}")
+            break
+
+        # Increment frame index for the next iteration
+        frame_index += 1
+
+        # Sleep for 1 second to ensure the time updates every second
+        time.sleep(1)
+
+def update_static_elements(kpi_data):
+    # Parse colors
+    bg_r, bg_g, bg_b = map(int, kpi_data["background_color"].split(","))
+    text_r, text_g, text_b = map(int, kpi_data["text_color"].split(","))
+    line_r, line_g, line_b = map(int, kpi_data["line_color"].split(","))
+
+    # Create a new image
+    static_img = Image.new("RGBA", (pixoo_screen, pixoo_screen), (bg_r, bg_g, bg_b))
+    draw = ImageDraw.Draw(static_img)
+
+    # Load font (fallback to default if needed)
+    try:
+        font = ImageFont.truetype("views/fonts/PressStart2P.ttf", 7.5) 
+    except IOError:
+        try:
+            font = ImageFont.truetype("views/fonts/TinyUnicode.ttf", 7.5)
+        except IOError:
+            font = ImageFont.load_default()
+
+    for y in range(0, 44): 
+        draw.point((46, y), fill=(line_r, line_g, line_b))
+    for x in range(0, 46):
+        draw.point((x, 14), fill=(line_r, line_g, line_b)) 
+        draw.point((x, 29), fill=(line_r, line_g, line_b)) 
+    for x in range(0, 64):
+        draw.point((x, 44), fill=(line_r, line_g, line_b)) 
+
+    draw.text((14, 4), format_kpi_value(kpi_data['green_flags']), fill=(text_r, text_g, text_b), font=font)
+    draw.text((14, 19), format_kpi_value(kpi_data['red_flags']), fill=(text_r, text_g, text_b), font=font)
+    draw.text((14, 34), format_kpi_value(kpi_data['attendance']), fill=(text_r, text_g, text_b), font=font)
+
+    if kpi_data.get("showDateTime"):
+        tz = timezone(country_timezones.get(kpi_data["country"], "Australia/Sydney"))
+        now = datetime.now(tz)
+        now_date = now.strftime("%d/%m/%y")
+        now_time = now.strftime("%H:%M")
+
+        # Get country code mapping
+        country_code = {
+            "Australia": "AU",
+            "Philippines": "PH",
+            "United States": "US",
+            "India": "IN",
+            "Colombia": "CO",
+        }.get(kpi_data["country"], "AU")
+
+        draw.text((2, 46), country_code, fill=(text_r, text_g, text_b), font=font) 
+        draw.text((23, 46), now_time, fill=(text_r, text_g, text_b), font=font) 
+        draw.text((0, 55), now_date, fill=(text_r, text_g, text_b), font=font)
+        
+            # Draw "CS#1" on the right side
+        right_x = 52  # X-axis position for right-aligned text
+        draw.text((right_x, 3), "C", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 13), "S", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 24), "#", fill=(text_r, text_g, text_b), font=font)
+        draw.text((right_x, 34), "1", fill=(text_r, text_g, text_b), font=font)
+
+    return static_img
+
+def update_pixoo_display(kpi_data):
+    global animation_thread
+
+    try:
+        if not try_to_request(f"http://{pixoo_host}/get"):
+            print("Pixoo device is not reachable!")
+            return
+
+        # Display static elements first and get the static background
+        static_background = update_static_elements(kpi_data)
+
+        # Load frames for animations
+        green_frames = load_frames_from_directory("views/img/green-flag-frames", "GF", 5)
+        red_frames = load_frames_from_directory("views/img/red-flag-frames", "RF", 5)
+        attendance_frames = load_frames_from_directory("views/img/attendance-frames", "AF", 2)
+
+        # Start animation in a thread
+        with animation_lock:
+            if animation_thread is not None:
+                stop_animation = True
+                animation_thread.join()
+                stop_animation = False
+
+            animation_thread = threading.Thread(
+                target=animate_loop,
+                args=(
+                    [green_frames, red_frames, attendance_frames],  # frames_collection
+                    static_background,  # static_background
+                    kpi_data["showDateTime"],  # show_date_time
+                    kpi_data["country"],  # country
+                    kpi_data["text_color"],  # text_color
+                    kpi_data["background_color"],  # background_color
+                ),
+                daemon=True,
+            )
+
+            animation_thread.start()
+
+    except (ConnectTimeoutError, ConnectionError) as e:
+        print(f"Failed to connect to Pixoo device: {e}")
+    except Exception as e:
+        print(f"Error updating Pixoo display: {e}")
+
+# Start Flask app
+if __name__ == "__main__":
+    app.run(debug=True, host="127.0.0.1", port=8000)
